@@ -1,0 +1,140 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Iker Otermin"
+date: "1/23/2017"
+output: html_document
+---
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+The goal of the project to predict the manner in which they did the exercise, which is the “classe” variable.
+
+## Loading the data
+```{r}
+## Loading the datasets
+### Training data
+tdata <- read.csv("pml-training.csv", na.strings = c("NA", "", "#DIV/0!"))
+### Testing data
+testdata <- read.csv("pml-testing.csv", na.strings = c("NA", "", "#DIV/0!"))
+### Training data set overview
+str(tdata)
+```
+
+
+```{r cars}
+## Loading the libraries
+
+library(AppliedPredictiveModeling)
+library(caret)
+library(ggplot2)
+library(rpart)
+library(MASS)
+library(Hmisc)
+library(psych)
+library(klaR)
+library(rattle)
+
+```
+
+## Data manipulation and cleaning
+
+We see that there is a number of variables that provide no information for our prediction analysis, such as date-time related variables and usernames. But a significant amount of variables contain no information at all and become of no use either. Therefore we will proceed to cleaning the data by removing variables with near to zero variables in both training and testing data sets.
+```{r}
+##cleaning training data
+nzv_cols <- nearZeroVar(tdata)
+if(length(nzv_cols) > 0) tdata <- tdata [, -nzv_cols]
+
+trainingclean <- tdata[, colSums(is.na(tdata)) < nrow(tdata) * 0.95]
+trainingclean <- trainingclean[,-(1:6)]
+str(trainingclean)
+
+##cleaning testing data
+nzvtest_cols <- nearZeroVar(testdata)
+if(length(nzvtest_cols) > 0) testdata <- testdata [, -nzvtest_cols]
+
+testclean <- testdata[, colSums(is.na(testdata)) < nrow(testdata) * 0.95]
+testclean <- testclean[,-(1:6)]
+str(testclean)
+
+```
+
+Next we will create a data partition, splitting the data for dedicating 70% of the training dataset to train our model, and 30% to test our model.
+
+```{r}
+inTrain <- createDataPartition( y = trainingclean$classe, p = 0.7, list = FALSE)
+
+training <- trainingclean[inTrain, ]
+testing <- trainingclean[-inTrain,]
+dim(training)
+dim(testing)
+```
+
+## Building our model: 
+
+###Random Forest
+
+We will build our model by Random Forest approach. In random forests, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error. It is estimated internally.
+
+```{r}
+## Random Forest
+
+set.seed(82)
+modrf <- train(classe~., data = training, method = "rf", prox = TRUE)
+predrf <- predict(modrf, newdata = testing)
+confusionMatrix(testing$classe, predrf)
+predict(modrf, newdata=testclean)
+
+```
+
+The model has a very high accuracy of above .99, and a very low out of the sample error rate.
+
+```{r}
+## Out of the sample error rate
+1-sum(predrf == testing$classe) / length(predrf)
+```
+
+It is, however, a very time-consuming model. We will reduce the variables building a new model that contains the most important seven variables.
+
+```{r}
+varImp(modrf)
+## Reduced Random Forest model
+modrfred <- train(classe~roll_belt+pitch_forearm+yaw_belt+magnet_dumbbell_z+pitch_belt +
+                    magnet_dumbbell_y+roll_forearm, data = training, method="rf", prox=TRUE)
+summary(modrfred)
+
+predrfred <- predict(modrfred, newdata = testing)
+confusionMatrix(testing$classe, predrfred)
+predict(modrfred, newdata=testclean)
+
+## Out of sample error
+
+1-sum(predrfred == testing$classe) / length(predrfred)
+
+```
+This model has an Accuracy almost as high as the previous model, and since this is more time-efficient, we will select this model over the previous one.
+
+
+### Decission Tree: rpart
+
+An alternative approach using rpart.
+```{r}
+## rpart
+
+set.seed(125)
+moddt <- rpart ( classe ~ ., method = "class", data = training)
+
+fancyRpartPlot(moddt, main = "Decission Tree")
+
+preddt <- predict(moddt, newdata = testing, type = "class")
+
+confusionMatrix(testing$classe, data = preddt)
+
+## Out of the sample error rate
+
+1-sum(preddt == testing$classe) / length(preddt)
+```
+Despite being a quite solid model, this model predicts much worse than the random forest models as we can see on the accuracy and sample error rate.
+
+
+## Conclusion
+
+The model selected is the reduced random forest model. 
